@@ -1,0 +1,282 @@
+Help me Design Url Shorner?
+
+Mock Practice 1: Designing a URL Shortening Service like Tiny URL  
+
+Url Shortner is a web application that encodes a long url to short url and vice-versa.
+Short Url is easy to use, and maintain.
+It also facilitates analytics and monitoring about the link.
+- Affiliate Marketing: Tracking, Analyzing Audience, and Campaign Performances 
+hiding sensitive data.
+
+
+
+
+1) Requirement Clarification
+
+-- Functional Requirements
+. Long url should be encoded to short url which is unique.
+. Short url should be redirected to long url
+. each url has an expiry time.
+
+
+-- Non-functional Requiremets
+>> CAP 
+Partinoning and Availability.
+
+. Application should be highly available and scalable.
+. URL redirection should happen in near real time with minimum latency.
+
+
+Additional Requirements
+. Users should be able to define custom urls and url expiry time.
+. Users should be able to track information about the url. 
+
+
+
+2) Capacity Estimations / Back of envelope Calculations
+
+Read Heavy or Write Heavy ?
+* Url Shortner is a read heavy application.
+
+Lets assume Read : Write ratio is 100 : 1.
+
+-- Traffic Estimations
+
+. Lets assume there will be 500 mn write request per month.
+. Read requests : 500 mn * 100 : 50 BN read requests per month 
+
+-- Query Per Second
+
+100 : 1 read to write
+
+. Read requests : 500 mn * 100 : 50 BN read requests per month 
+                                50 bn / 30 * 24 * 60 * 60 : 
+
+. Read: 20k urls / second.
+. Write: 200 urls / second.
+
+
+-- Storage Estimates
+Assumption:
+Url Expiry Time: 5 Years
+
+Required Urls: 500 mn * 12 * 5 : 30 BN Urls required for 5 years
+
+Size of 8 characters is 16 bytes
++ meta data about url + user information
+
+Lets assume each url require 500 bytes
+
+Total storage required for 5 years : 30 bn urls * 500 bytes : 15 TB
+
+
+-- Cache Requirements 
+
+This calculation should be on read request per day.
+>> 20k read request per second
+>> 20k * 3600 * 24 
+= 1.7 Billion read request per day.
+
+Cache Required per day:
+Following 80: 20 Rule
+
+1.7 bn * 0.2 * 500 bytes / url : ~170 bn bytes = ~ 170 GB cache storage require per day.
+
+
+
+
+
+
+
+
+
+
+3) System APIS
+
+
+POST : /tinyurl/encode/www.systemDesign.com/shortUrlCaseStudy/123
+Read : /tinyUrl/abc123
+
+
+
+
+4) Defining the Databases Schema
+
+-- Type of Data to store : text and numbers
+-- Size of Data : 15 TB
+-- Relation Between Data:
+Data is not realted other than url belongs to a user.
+
+-- Choice of Databases
+
+-- Observations
+We need to store small size records at scale and data is not related,
+>> our service is read heavy.
+hence we can opt for Non-relational Databases likes of MongoDB, AWS S3
+
+
+-- Mapping across different tables
+
+-- Table 1: URL
+Hash(short_Url): varchar: PK
+long_Url: varchar
+short_Url: varchar
+user_uuid: fk
+expiry_time: timestamp
+creation_time: timestamp
+
+
+-- Table 2: User
+user_uuid: int : pk
+user_name : varchar
+email: varchar
+
+
+5)  High Level Design
+
+Client Server, Application Servers, Databases
+Attach Diagram Created.
+
+
+
+
+6) Detailed Component Level Design
+
+Caching, Load Balancers, DB Partinoning.
+Diagram Created and explained.
+
+
+How do we partition our urls?
+> We can partition on the basis of starting letter of the short url
+but it will  lead to uneven distribution and uneven loads.
+
+Then ?
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ----------- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+-------------- wrong -----------------------------
+> We can assign range of urls to each partition.
+like
+Partion 1 : 1 - 10 mn urls
+Partion 2 : 11 - 20 mn urls
+..
+..
+Partinon x 
+
+
+------------------------------------------------------------------------------------------
+
+(2) Hash Based Partitioning 
+
+  
+
+We take hash of objects we are storing 
+Then calculate which partition to use based upon hash 
+
+  
+
+  
+
+In Our Use Case: 
+
+  
+
+Short URL ----> Hash -----> Key 
+Based Upon Key ----> Partition Number 
+
+
+
+Eg:  
+
+hash() = key % 256 (any constant) 
+Hash Upto 256 Values: 0 to 255 
+
+  
+
+256 Partitions -----> Follow Round Robin Approach 
+
+req-1: 1st Short URL: DB Partition-1 
+req-2: 2nd Short URL: DB Partition-2 
+
+.................................... 
+
+Replication of Partitions: 
+
+To Avoid any point of failure, 
+We can replicate each partition 
+
+
+
+7) Bottlenecks / Trade Offs / Error Scenarios
+
+-- Error Scenarios
+
+Encoding Algorithms:
+ MD5, SHA 256 , SHA 512, Base64 etc
+
+Short url : 6 characters or 8 characters
+a-z: 26
+A-Z: 26
+0-9: 10
+
+Total Urls: 62 ^ 6:  ~=50 Bn Urls
+Required Urls: 500 mn * 12 * 5 : 30 BN Urls required for 5 years
+
+Therefore, 6 Characters are fine for short url.
+
+
+1 Long url can have multiple short urls
+1 short url will only have 1 long url
+
+otherwise short url will not be navigatable.
+
+Q. If different users provide same long url they will have same short url.
+
+How to solve?
+We can include uuid in the short url.
+We can append a sequence in the url
+
+
+Q. Will single encoding algorithm will be able to fulfill all the encodings?
+No
+We need to use combination of encoders like SHA 256 + MD5
+
+
+
+
+-- Sql vs No SQL : 
+NoSQL database.
+Explained.
+
+
+
+-- CAP
+Consistency vs Availability : 
+Availability is more important than consistency
+because if application is not available then users will not be able to navigate to the url and that will be loss of business.
+
+
+
+
+
+
+8) Telemetry / Analytics
+We can track following things for a url
+
+-- Country of User
+-- CTR
+-- Number of Views
+-- Date and Time
+
+How?
+
+Architecture: 
+EDA / Event Based or Driven Architecture 
+
+We can generate a kafka event on url succesfull redirection
+and puts it into EQ event queue for Analytics.
+
+On top of it,
+Run Apache Spark and run hadoop queries to get more insights.
+  
+
+------- The End --------
