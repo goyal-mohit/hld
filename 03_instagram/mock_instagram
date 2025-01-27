@@ -1,0 +1,352 @@
+Question: 
+
+Design a social media application like instagram
+where a billion of users post content like images, reels, videos
+And can like share comment save content among followers.
+
+
+The System Design Template 
+
+
+
+(1) Requirements Clarification  
+
+  
+Functional Requirements: Defines the functionality/ features aspects  
+
+Users should be ablt to post content like image, audio, video, reel.
+Users should be able to see other users posts and engage with it via like, save, share, comment on the content.
+Users should be able to connect / follow with other users. 
+Users should be able to chat.
+Users should be able to see advertisments.
+
+
+Non-Functional Requirements : Availability, Low Latency, Consistency, Scalability  
+
+
+CAP Therorm: As partioning is important since this is a large scale application involvig 1 bn+ users.
+
+
+
+- Availability > Consistency 
+(Consistency can take a hit in the interest of Availability) 
+(A user does not see a latest photo for some milliseconds, its acceptable) 
+(My services should be up 24*7) 
+
+Application Should be highly available. Consistency can take a hit.
+Application should be highly scalable.
+Application will be Partitioned in interest of scalability.
+
+Application should be highly reliable. 
+Any User data should be maintained.
+
+Application should be near real time for following features:
+-- Home Page
+-- User Timeline
+
+
+
+
+
+Additional Requirements : Good to have requirements. 
+
+ 
+
+(2) Back of the Envelope Calculation / Capacity Estimations 
+ 
+ Applicaton is read heavy.
+ Considering ratio 
+ Read : Write
+ 100 : 1
+
+Scale / Traffic Estimations : 
+
+TAU (Total Active Users) 	: 3.1 Bn+
+MAU (Monthly Active Users)  : 2 Bn+
+DAU (Daily Active Users)  	: 1 Bn + 
+
+
+No. of write per day: 1 bn * 2 ~= 2 bn write per day
+No. of read per day: 1 bn * 2 ~= 200 bn reads per day
+
+
+Query Per Second 
+
+Lets assume, each user posts 2 media each day 
+
+Number of Write each day: 1 bn * 2 * 24 * 3600 =~ 2 tn writes per sec
+Number of reades: 200 tn read / sec
+
+
+Storage Estimates 
+
+Lets assumbe , each user post 20mb of data each day
+i.e 
+1 bn * 20 mb =~ 20 PB required per day
+
+20 pb * 30 =~ 600 pb data required per month.
+
+Cache Requirements  
+80:20 rule
+
+=~ 4 PB of cache storage required per day
+  
+
+
+(3) System Interface Design / System API  
+
+ 
+Request 
+
+Parameters  
+
+Response 
+
+   
+
+(4) Defining the DB Schema    
+
+Type of Data to Store  
+
+Users -- Followers
+Media: Image, Audio, Video, Text, Reel
+MetaData: media name, media type, size, duration, quality
+
+
+Mapping across different tables / databases  
+
+Table 1 :User 
+
+user_id: uuid pk
+name: varchar
+email: varchar
+
+
+Table 2: Content
+
+media_id: uuid pk
+user_id: uuid fk
+media_name: varchar
+media_type: varchar
+media_link: varchar 
+media_size: varchar
+creation_date: timestamp
+
+Table 3: UserFollower
+
+user_follower_id: uuid pk 
+user_id: fk
+follower_id: fk
+
+
+Choice of DB  
+
+Obervation: 
+
+Data Storage requirments are huge as 
+Application is dealing with 2 bn+ active users per month
+and storage requirement is 600 PB per month.
+
+We need scalable database.
+
+Users are related with Other users. Relationship exist.
+User is related with Post.
+
+One Post is not related to other post. 
+
+------------------------------------------------------
+
+A straightforward approach for storing above schema 
+would be to use Relational DB like MySQL 
+
+Challenges:  
+
+- Partitioning will be challenging 
+- Quering would be very slow for billions of rows (clustered indexing) 
+- Not Easily Horizontally Scalable 
+
+
+Solution: 
+We can store above Schema in a Distributed Key-Value Storage 
+to have easier Horizontal Scaling 
+
+
+
+User Information : Relation DB / SQL Databases
+User - follower: Relational DB / SQL DB
+Media / Content : Object Storage like of Amazon S3, Blob
+Media Metadata: Likes, Comments, Shares, Location Tags - NoSQL DB 
+Relational b/w User-Content and photo:  User - Media : Wide Column Databases like Casandra DB
+
+
+
+Why Wide Column Database:
+-- Because it by default replicas of data and takes some time to delete,
+there fore reliability of data requirement is fulfilling.
+
+Provides low latecny read opeartions which is a plus.
+
+
+
+
+  
+
+(5) High Level Design  
+
+
+Client  -- covered
+
+Server -- covered
+
+Application Sever -- covered
+
+Database(s) -- covered
+
+Caching  -- covered
+
+  
+
+   
+
+(6) Detailed Component Level Design  
+
+ 
+Load Balancing  -- covered
+
+Caching  -- covered
+
+CDN  -- covered
+
+DB Partitioning  -- covered. 
+
+Can be done over user id or media id?
+
+Problem with Media_ID based Sharding: 
+
+(A) 1 User can posts a lot of content 
+
+Profile Page: All Contents posted by the User 
+Go to All Partitions/Shards, merge the responses for that particular user 
+and return ----- VERY SLOW 
+  
+
+(B) Too many people can post the same photo  
+
+- Viral Posts:  
+Lead to Uneven Distribution of Load 
+User Id as the partioning id.
+
+Advantage:  
+
+Get All Information for a User under 1 Partition, 
+No Need to Aggregate responses from multiple Partitions   
+
+
+(7) Bottlenecks 
+
+Single Point of Failure?    -- covered.
+
+Enough Replicas to Store Data?   -- covered.
+
+Auto Scaling  -- covered.
+
+Error / Exception / Other Scenarios  ?
+
+
+
+
+
+-- News Feed Generation
+
+
+User should be seeing others users posts in their timeline
+
+Feed generation can be generated on-line or offline?
+
+On - Line
+
+If we generate on line feed, it will take lots of time since
+users can be large. collating posts from different users will take time.
+Online genration can be never ending one since any user located geo graphically can post any time.
+
+
+Off line feed generation
+
+We can pre process user feed generation and breaks them down into different pages 
+and pre load it into cache for quick retrieval by user device which will enhance user experience.
+
+On an average, in one scroll user looks up to 50 posts.
+We can pre-generate approximatly 500 posts for the user.
+
+
+
+
+--- News Feed Ranking
+
+We can calculate user feed score
+by the engagement created by the user post
+based on
+
+Likes
+comment
+mentions
+save
+share
+Watch Time
+Users interest
+
+better user feed rank will shown up in the user feed higher.
+
+
+
+-- News Feed Publication
+
+News feed can be published to user in the following ways
+
+-- Pull Model
+Clients can pull data on a regular basis whenever they need it.
+
+User will refresh / reload its device, and news feed will be loaded into the user device.
+
+Most of the time it will end up in a empty response. / Ajax CALL / Short Polling.
+There will be lots of read calls.
+
+
+-- Push Model
+Once a user published a post, we can immediately push this to All followers.
+
+News feed will be pushed in the user device by the server.
+This will be achieved by the server side events.
+
+This will be a problem, in case of users with large following like Celebrity Users.
+since, it involves updating million of write requests. Too much load on the server.
+
+For inactive users. 
+this will be a wastage of resources.
+
+What is the solution ?
+
+
+Hybrid Model
+Combiation of Pull Model + Push Model
+
+News feed will be pushed to the 
+User where post is created by user with limited followers. let say < 1000
+
+News feed will be pulled by the user
+where media is created by user with large amount of following.
+
+ 
+
+ 
+
+(8) Analytics and Monitoring 
+
+ 
+Monitoring  
+
+Performance  
+
+ 
+
+------------------------------ The End ----------------------------------- 
